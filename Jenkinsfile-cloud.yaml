@@ -2,85 +2,80 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // Jenkins creds (username+password)
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // Jenkins credential ID
         DOCKERHUB_REPO = "manojkumar1212"
         APP_NAME = "log-monitoring"
-        TAG = "latest"
-        GIT_REPO = "https://github.com/Chinthammanoj/Logs_with_clientName.git"
-        EC2_HOST = "ubuntu@52.66.202.51"   // change this to your EC2 public IP/DNS
+        TAG = "latest"   // you can also use "${env.BUILD_NUMBER}" for unique tags
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'master', url: "${GIT_REPO}"
+                git url: 'https://github.com/Chinthammanoj/Logs_with_clientName.git', branch: 'master'
             }
         }
 
         stage('Docker Login') {
             steps {
                 sh """
-                  echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
+                echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
                 """
             }
         }
 
-        stage('Build & Push Docker Images') {
+        stage('Build & Tag Docker Images') {
             steps {
                 script {
-                    // These are the services with build context in docker-compose.cloud.yml
-                    def services = [
-                        "log-collector",
-                        "persistor-auth",
-                        "persistor-payment",
-                        "persistor-system",
-                        "persistor-application",
-                        "log-ui"
-                    ]
+                    // Build log-listener
+                    sh """
+                    docker build -t $DOCKERHUB_REPO/${APP_NAME}-listener:$TAG ./log-listener
+                    """
 
-                    for (s in services) {
-                        sh """
-                          echo "🚀 Building image for ${s}"
-                          docker build -t $DOCKERHUB_REPO/${APP_NAME}-${s}:$TAG ${s}/
-                          docker push $DOCKERHUB_REPO/${APP_NAME}-${s}:$TAG
-                        """
-                    }
+                    // Build log-generator
+                    sh """
+                    docker build -t $DOCKERHUB_REPO/${APP_NAME}-generator:$TAG ./log-generator
+                    """
                 }
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Push to DockerHub') {
             steps {
-                sshagent (credentials: ['ec2-ssh-key']) {
+                script {
+                    sh "docker push $DOCKERHUB_REPO/${APP_NAME}-listener:$TAG"
+                    sh "docker push $DOCKERHUB_REPO/${APP_NAME}-generator:$TAG"
+                }
+            }
+        }
+
+        stage('Update Docker Compose') {
+            steps {
+                script {
+                    // Replace local build with DockerHub images dynamically
                     sh """
-                        ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
-                          if [ ! -d "/home/ubuntu/Logs_with_clientName" ]; then
-                              git clone ${GIT_REPO}
-                          fi &&
-                          cd /home/ubuntu/Logs_with_clientName &&
-                          git pull origin master &&
-
-                          # Replace build with image in docker-compose.cloud.yml
-                          sed -i "s|build: ./log-collector|image: $DOCKERHUB_REPO/${APP_NAME}-log-collector:$TAG|" docker-compose.cloud.yml
-                          sed -i "s|build: ./persistor-auth|image: $DOCKERHUB_REPO/${APP_NAME}-persistor-auth:$TAG|" docker-compose.cloud.yml
-                          sed -i "s|build: ./persistor-payment|image: $DOCKERHUB_REPO/${APP_NAME}-persistor-payment:$TAG|" docker-compose.cloud.yml
-                          sed -i "s|build: ./persistor-system|image: $DOCKERHUB_REPO/${APP_NAME}-persistor-system:$TAG|" docker-compose.cloud.yml
-                          sed -i "s|build: ./persistor-application|image: $DOCKERHUB_REPO/${APP_NAME}-persistor-application:$TAG|" docker-compose.cloud.yml
-                          sed -i "s|build: ./log-ui|image: $DOCKERHUB_REPO/${APP_NAME}-log-ui:$TAG|" docker-compose.cloud.yml
-
-                          sudo docker compose -f docker-compose.cloud.yml down
-                          sudo docker compose -f docker-compose.cloud.yml pull
-                          sudo docker compose -f docker-compose.cloud.yml up -d
-                        '
+                    sed -i 's|build: ./log-listener|image: $DOCKERHUB_REPO/${APP_NAME}-listener:$TAG|' docker-compose.local.yml
+                    sed -i 's|build: ./log-generator|image: $DOCKERHUB_REPO/${APP_NAME}-generator:$TAG|' docker-compose.local.yml
                     """
                 }
+            }
+        }
+
+        stage('Docker Compose Down') {
+            steps {
+                sh 'docker compose -f docker-compose.local.yml down'
+            }
+        }
+
+        stage('Docker Compose Up') {
+            steps {
+                sh 'docker compose -f docker-compose.local.yml up -d'
             }
         }
     }
 
     post {
         always {
-            echo "✅ Pipeline finished successfully!"
+            sh 'docker logout'
         }
     }
 }
