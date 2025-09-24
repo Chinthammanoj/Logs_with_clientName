@@ -3,11 +3,11 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // Jenkins creds (username+password)
-        DOCKERHUB_REPO = "tharak397"
+        DOCKERHUB_REPO = "manojkumar1212"
         APP_NAME = "log-monitoring"
         TAG = "latest"
-        GIT_REPO = "https://github.com/venkattharakram/Logs_with_clientName.git"
-        EC2_HOST = "ubuntu@13.233.107.162"   // change this to your EC2 public IP/DNS
+        GIT_REPO = "https://github.com/Chinthammanoj/Logs_with_clientName.git"
+        EC2_HOST = "ubuntu@52.66.202.51"   // change this to your EC2 public IP/DNS
     }
 
     stages {
