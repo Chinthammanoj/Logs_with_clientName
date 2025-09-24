@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds') // Jenkins credential ID
-        DOCKERHUB_REPO = "tharak397"
+        DOCKERHUB_REPO = "manojkumar1212"
         APP_NAME = "log-monitoring"
         TAG = "latest"   // you can also use "${env.BUILD_NUMBER}" for unique tags
     }
@@ -11,7 +11,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/venkattharakram/Logs_with_clientName.git', branch: 'master'
+                git url: 'https://github.com/Chinthammanoj/Logs_with_clientName.git', branch: 'master'
             }
         }
 
